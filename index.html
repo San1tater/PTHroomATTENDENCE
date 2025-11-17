@@ -1,18 +1,20 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>普通话活动室考勤系统</title>
+    <title>普通話活動室考勤系統</title>
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: "Microsoft YaHei", sans-serif;
+            font-family: "Microsoft JhengHei", "微軟正黑體", sans-serif;
         }
         
         body {
@@ -246,15 +248,15 @@
 </head>
 <body>
     <header>
-        <h1>普通话活动室考勤系统</h1>
-        <p>预设班级QR码 - 直接扫描登记</p>
+        <h1>普通話活動室考勤系統</h1>
+        <p>預設班級QR碼 - 直接掃描登記</p>
     </header>
     
     <div class="container">
         <div class="panel">
-            <h2>1. 班级QR码管理</h2>
+            <h2>1. 班級QR碼管理</h2>
             <div class="form-group">
-                <label for="grade-select">选择年级</label>
+                <label for="grade-select">選擇年級</label>
                 <select id="grade-select">
                     <option value="P1">小一 (P1)</option>
                     <option value="P2">小二 (P2)</option>
@@ -273,20 +275,20 @@
                 <button class="class-btn" data-class="E">E班</button>
             </div>
             
-            <button id="generate-all" class="secondary">生成所有班级QR码</button>
-            <button id="download-class" class="secondary">下载当前班级QR码</button>
+            <button id="generate-all" class="secondary">生成所有班級QR碼</button>
+            <button id="download-class" class="secondary">下載當前班級QR碼 (ZIP)</button>
             
             <div id="qr-container" class="qr-container"></div>
         </div>
         
         <div class="panel">
-            <h2>2. 登记考勤</h2>
+            <h2>2. 登記考勤</h2>
             <div class="form-group">
-                <label for="session-id">本次考勤识别码</label>
-                <input type="text" id="session-id" placeholder="例如：2024-03-20-活动1">
+                <label for="session-id">本次考勤識別碼</label>
+                <input type="text" id="session-id" placeholder="例如：2024-03-20-活動1">
             </div>
-            <button id="start-scan">开始扫描</button>
-            <button id="stop-scan" class="secondary hidden">停止扫描</button>
+            <button id="start-scan">開始掃描</button>
+            <button id="stop-scan" class="secondary hidden">停止掃描</button>
             <div id="video-container" class="video-container hidden">
                 <video id="video" autoplay muted playsinline></video>
             </div>
@@ -295,38 +297,39 @@
         </div>
         
         <div class="panel">
-            <h2>3. 考勤记录</h2>
+            <h2>3. 考勤記錄</h2>
             <div class="form-group session-selector">
-                <label for="session-select">选择活动</label>
+                <label for="session-select">選擇活動</label>
                 <select id="session-select">
-                    <option value="">-- 选择活动 --</option>
+                    <option value="">-- 選擇活動 --</option>
                 </select>
             </div>
             <div id="records-list" class="record-list"></div>
-            <button id="export-excel" class="secondary">导出为Excel</button>
-            <button id="clear-data" class="secondary">清除所有数据</button>
+            <button id="export-excel" class="secondary">匯出為Excel</button>
+            <button id="clear-data" class="secondary">清除所有數據</button>
         </div>
     </div>
     
     <footer>
-        <p>普通话活动室考勤系统 &copy; 2024 - 预设P1A-P6E所有班级</p>
+        <p>普通話活動室考勤系統 &copy; 2024 - 預設P1A-P6E所有班級</p>
     </footer>
 
     <script>
-        // 存储考勤数据
+        // 存儲考勤數據
         let attendanceData = JSON.parse(localStorage.getItem('attendanceData')) || {};
         let currentSessionId = '';
         let scannedStudents = new Set();
-        let currentClass = 'P1A'; // 默认班级
+        let currentClass = 'P1A'; // 默認班級
         let isScanning = false;
         let videoStream = null;
+        let qrDataUrls = {}; // 存儲QR碼的DataURL
 
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
-            // 加载已有的活动列表
+            // 加載已有的活動列表
             updateSessionSelect();
             
-            // 班级选择事件
+            // 班級選擇事件
             document.getElementById('grade-select').addEventListener('change', updateCurrentClass);
             document.querySelectorAll('.class-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -334,38 +337,38 @@
                 });
             });
             
-            // 生成所有QR码按钮事件
+            // 生成所有QR碼按鈕事件
             document.getElementById('generate-all').addEventListener('click', generateAllQRCodes);
             
-            // 下载班级QR码按钮事件
-            document.getElementById('download-class').addEventListener('click', downloadClassQRCodes);
+            // 下載班級QR碼按鈕事件
+            document.getElementById('download-class').addEventListener('click', downloadClassQRCodesAsZip);
             
-            // 开始扫描按钮事件
+            // 開始掃描按鈕事件
             document.getElementById('start-scan').addEventListener('click', startScanner);
             
-            // 停止扫描按钮事件
+            // 停止掃描按鈕事件
             document.getElementById('stop-scan').addEventListener('click', stopScanner);
             
-            // 导出Excel按钮事件
+            // 匯出Excel按鈕事件
             document.getElementById('export-excel').addEventListener('click', exportToExcel);
             
-            // 清除数据按钮事件
+            // 清除數據按鈕事件
             document.getElementById('clear-data').addEventListener('click', clearAllData);
             
-            // 活动选择变化事件
+            // 活動選擇變化事件
             document.getElementById('session-select').addEventListener('change', showSessionRecords);
             
-            // 初始化显示P1A班的QR码
+            // 初始化顯示P1A班的QR碼
             generateClassQRCodes(currentClass);
         });
         
-        // 更新当前班级
+        // 更新當前班級
         function updateCurrentClass(event, cls = null) {
             const grade = document.getElementById('grade-select').value;
             const classLetter = cls || 'A';
             currentClass = grade + classLetter;
             
-            // 更新按钮状态 - 修复视觉区分
+            // 更新按鈕狀態 - 修復視覺區分
             document.querySelectorAll('.class-btn').forEach(btn => {
                 if (btn.getAttribute('data-class') === classLetter) {
                     btn.classList.add('active');
@@ -374,16 +377,17 @@
                 }
             });
             
-            // 生成该班级的QR码
+            // 生成該班級的QR碼
             generateClassQRCodes(currentClass);
         }
         
-        // 生成指定班级的QR码 - 使用qrcode-generator库
+        // 生成指定班級的QR碼 - 使用qrcode-generator庫
         function generateClassQRCodes(className) {
             const qrContainer = document.getElementById('qr-container');
             qrContainer.innerHTML = '';
+            qrDataUrls = {}; // 重置存儲的DataURL
             
-            // 生成01-30号学生的QR码
+            // 生成01-30號學生的QR碼
             for (let i = 1; i <= 30; i++) {
                 const studentId = `${className} ${i.toString().padStart(2, '0')}`;
                 const qrCard = document.createElement('div');
@@ -399,28 +403,32 @@
                 
                 qrContainer.appendChild(qrCard);
                 
-                // 生成QR码
+                // 生成QR碼
                 generateQRCode(img, studentId);
             }
             
-            showStatus(`已生成 ${className} 班QR码`, 'success');
+            showStatus(`已生成 ${className} 班QR碼`, 'success');
         }
         
-        // 使用qrcode-generator库生成QR码
+        // 使用qrcode-generator庫生成QR碼
         function generateQRCode(imgElement, text) {
             try {
-                // 使用qrcode-generator库
-                const typeNumber = 4; // QR码类型
-                const errorCorrectionLevel = 'L'; // 错误纠正级别
+                // 使用qrcode-generator庫
+                const typeNumber = 4; // QR碼類型
+                const errorCorrectionLevel = 'L'; // 錯誤糾正級別
                 const qr = qrcode(typeNumber, errorCorrectionLevel);
                 qr.addData(text);
                 qr.make();
                 
-                // 生成QR码图片
-                imgElement.src = qr.createDataURL(10, 0); // 10是单元格大小，0是边距
+                // 生成QR碼圖片
+                const dataUrl = qr.createDataURL(10, 0); // 10是單元格大小，0是邊距
+                imgElement.src = dataUrl;
+                
+                // 存儲DataURL用於下載
+                qrDataUrls[text] = dataUrl;
             } catch (error) {
-                console.error('QR码生成错误:', error);
-                // 备用方案：显示文本
+                console.error('QR碼生成錯誤:', error);
+                // 備用方案：顯示文本
                 imgElement.style.display = 'none';
                 const textDiv = document.createElement('div');
                 textDiv.textContent = text;
@@ -430,21 +438,21 @@
             }
         }
         
-        // 生成所有班级的QR码
+        // 生成所有班級的QR碼
         function generateAllQRCodes() {
             const grades = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'];
             const classes = ['A', 'B', 'C', 'D', 'E'];
             
-            // 显示生成中状态
-            showStatus('正在生成所有班级QR码，请稍候...', 'info');
+            // 顯示生成中狀態
+            showStatus('正在生成所有班級QR碼，請稍候...', 'info');
             
-            // 创建新窗口显示所有QR码
+            // 創建新窗口顯示所有QR碼
             const printWindow = window.open('', '_blank');
             printWindow.document.write(`
                 <!DOCTYPE html>
                 <html>
                 <head>
-                    <title>所有班级QR码</title>
+                    <title>所有班級QR碼</title>
                     <style>
                         body { font-family: Arial, sans-serif; margin: 20px; }
                         .class-section { margin-bottom: 40px; page-break-after: always; }
@@ -459,18 +467,18 @@
                     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"><\/script>
                 </head>
                 <body>
-                    <h1>所有班级QR码</h1>
+                    <h1>所有班級QR碼</h1>
             `);
             
             let count = 0;
             
-            // 为每个班级生成QR码
+            // 為每個班級生成QR碼
             grades.forEach(grade => {
                 classes.forEach(cls => {
                     const className = grade + cls;
                     printWindow.document.write(`<div class="class-section"><h2 class="class-title">${className}班</h2><div class="qr-grid">`);
                     
-                    // 生成01-30号学生的QR码
+                    // 生成01-30號學生的QR碼
                     for (let i = 1; i <= 30; i++) {
                         const studentId = `${className} ${i.toString().padStart(2, '0')}`;
                         printWindow.document.write(`
@@ -489,7 +497,7 @@
             printWindow.document.write('</body></html>');
             printWindow.document.close();
             
-            // 在所有QR码生成后显示完成消息
+            // 在所有QR碼生成後顯示完成消息
             setTimeout(() => {
                 grades.forEach(grade => {
                     classes.forEach(cls => {
@@ -498,7 +506,7 @@
                             const studentId = `${className} ${i.toString().padStart(2, '0')}`;
                             const img = printWindow.document.getElementById(studentId.replace(' ', '_'));
                             if (img) {
-                                // 使用qrcode-generator库生成QR码
+                                // 使用qrcode-generator庫生成QR碼
                                 try {
                                     const typeNumber = 4;
                                     const errorCorrectionLevel = 'L';
@@ -507,7 +515,7 @@
                                     qr.make();
                                     img.src = qr.createDataURL(10, 0);
                                 } catch (error) {
-                                    console.error('QR码生成错误:', error);
+                                    console.error('QR碼生成錯誤:', error);
                                     img.style.display = 'none';
                                     const textDiv = printWindow.document.createElement('div');
                                     textDiv.textContent = studentId;
@@ -520,73 +528,87 @@
                     });
                 });
                 
-                showStatus(`成功生成所有 ${count} 个学生QR码`, 'success');
+                showStatus(`成功生成所有 ${count} 個學生QR碼`, 'success');
                 
-                // 提示用户可以打印页面
+                // 提示用戶可以打印頁面
                 setTimeout(() => {
-                    if (confirm('所有QR码已生成，是否打印页面？')) {
+                    if (confirm('所有QR碼已生成，是否打印頁面？')) {
                         printWindow.print();
                     }
                 }, 1000);
             }, 500);
         }
         
-        // 下载当前班级QR码
-        function downloadClassQRCodes() {
+        // 下載當前班級QR碼為ZIP文件
+        function downloadClassQRCodesAsZip() {
             const qrContainer = document.getElementById('qr-container');
             const qrCards = qrContainer.querySelectorAll('.qr-card');
             
             if (qrCards.length === 0) {
-                showStatus('请先生成QR码', 'error');
+                showStatus('請先生成QR碼', 'error');
                 return;
             }
             
-            showStatus('正在准备下载，请稍候...', 'info');
+            showStatus('正在打包QR碼，請稍候...', 'info');
             
-            // 创建下载链接
-            const downloadContainer = document.createElement('div');
-            downloadContainer.style.display = 'none';
-            document.body.appendChild(downloadContainer);
+            // 創建JSZip實例
+            const zip = new JSZip();
+            const folder = zip.folder(currentClass);
             
-            let downloaded = 0;
+            let processed = 0;
             const total = qrCards.length;
             
             qrCards.forEach(card => {
-                const img = card.querySelector('img');
                 const studentId = card.querySelector('div').textContent;
                 
-                if (img && img.src) {
-                    const a = document.createElement('a');
-                    a.href = img.src;
-                    a.download = `${studentId}.png`;
-                    downloadContainer.appendChild(a);
-                    a.click();
-                    downloaded++;
+                if (qrDataUrls[studentId]) {
+                    // 將DataURL轉換為Blob
+                    const dataUrl = qrDataUrls[studentId];
+                    const blob = dataURLToBlob(dataUrl);
+                    
+                    // 添加到ZIP文件
+                    folder.file(`${studentId}.png`, blob);
+                    processed++;
                 } else {
-                    downloaded++;
+                    processed++;
                 }
                 
-                // 当所有图片都尝试下载后
-                if (downloaded === total) {
-                    document.body.removeChild(downloadContainer);
-                    if (downloaded > 0) {
-                        showStatus(`已开始下载 ${currentClass} 班QR码，请查看浏览器下载`, 'success');
-                    } else {
-                        showStatus('没有可下载的QR码', 'error');
-                    }
+                // 當所有圖片都處理完成後
+                if (processed === total) {
+                    // 生成ZIP文件
+                    zip.generateAsync({type: "blob"}).then(function(content) {
+                        // 下載ZIP文件
+                        saveAs(content, `${currentClass}_QR碼.zip`);
+                        showStatus(`已下載 ${currentClass} 班QR碼ZIP文件`, 'success');
+                    });
                 }
             });
         }
         
-        // 开始扫描
+        // 將DataURL轉換為Blob
+        function dataURLToBlob(dataURL) {
+            const parts = dataURL.split(';base64,');
+            const contentType = parts[0].split(':')[1];
+            const raw = window.atob(parts[1]);
+            const rawLength = raw.length;
+            const uInt8Array = new Uint8Array(rawLength);
+            
+            for (let i = 0; i < rawLength; ++i) {
+                uInt8Array[i] = raw.charCodeAt(i);
+            }
+            
+            return new Blob([uInt8Array], {type: contentType});
+        }
+        
+        // 開始掃描
         function startScanner() {
             currentSessionId = document.getElementById('session-id').value.trim();
             if (!currentSessionId) {
-                showStatus('请输入本次考勤识别码', 'error');
+                showStatus('請輸入本次考勤識別碼', 'error');
                 return;
             }
             
-            // 初始化活动数据
+            // 初始化活動數據
             if (!attendanceData[currentSessionId]) {
                 attendanceData[currentSessionId] = [];
             }
@@ -607,7 +629,7 @@
             
             isScanning = true;
             
-            // 访问摄像头
+            // 訪問攝像頭
             navigator.mediaDevices.getUserMedia({ 
                 video: { 
                     facingMode: "environment",
@@ -620,15 +642,15 @@
                 video.srcObject = stream;
                 video.play();
                 scanLoop();
-                showStatus('摄像头已启动，开始扫描QR码...', 'info');
+                showStatus('攝像頭已啟動，開始掃描QR碼...', 'info');
             })
             .catch(function(err) {
-                showStatus('无法访问摄像头: ' + err.message, 'error');
+                showStatus('無法訪問攝像頭: ' + err.message, 'error');
                 stopScanner();
             });
         }
         
-        // 扫描循环
+        // 掃描循環
         function scanLoop() {
             if (!isScanning) return;
             
@@ -648,31 +670,31 @@
                 if (code) {
                     const studentId = code.data;
                     
-                    // 验证学生ID格式 (P1A 01 到 P6E 30)
+                    // 驗證學生ID格式 (P1A 01 到 P6E 30)
                     const pattern = /^(P[1-6][A-E]) (0[1-9]|[12][0-9]|30)$/;
                     if (!pattern.test(studentId)) {
-                        scanResult.innerHTML = `<div class="status error">无效QR码: ${studentId}</div>`;
+                        scanResult.innerHTML = `<div class="status error">無效QR碼: ${studentId}</div>`;
                         setTimeout(() => {
                             scanResult.innerHTML = '';
                         }, 2000);
                     } else if (!scannedStudents.has(studentId)) {
-                        // 记录考勤
-                        const timestamp = new Date().toLocaleString('zh-CN');
+                        // 記錄考勤
+                        const timestamp = new Date().toLocaleString('zh-TW');
                         attendanceData[currentSessionId].push({
                             studentId: studentId,
                             timestamp: timestamp
                         });
                         
-                        // 保存到本地存储
+                        // 保存到本地存儲
                         localStorage.setItem('attendanceData', JSON.stringify(attendanceData));
                         
                         scannedStudents.add(studentId);
                         updateAttendanceList();
                         updateSessionSelect();
                         
-                        scanResult.innerHTML = `<div class="status success">已登记: ${studentId} - ${timestamp}</div>`;
+                        scanResult.innerHTML = `<div class="status success">已登記: ${studentId} - ${timestamp}</div>`;
                         
-                        // 短暂显示成功信息
+                        // 短暫顯示成功信息
                         setTimeout(() => {
                             scanResult.innerHTML = '';
                         }, 2000);
@@ -685,7 +707,7 @@
             }
         }
         
-        // 停止扫描
+        // 停止掃描
         function stopScanner() {
             isScanning = false;
             
@@ -704,7 +726,7 @@
             stopBtn.classList.add('hidden');
             startBtn.classList.remove('hidden');
             
-            showStatus('扫描已停止', 'info');
+            showStatus('掃描已停止', 'info');
         }
         
         // 更新考勤列表
@@ -713,7 +735,7 @@
             attendanceList.innerHTML = '';
             
             if (attendanceData[currentSessionId] && attendanceData[currentSessionId].length > 0) {
-                // 按时间排序
+                // 按時間排序
                 const sortedRecords = [...attendanceData[currentSessionId]].sort((a, b) => 
                     new Date(a.timestamp) - new Date(b.timestamp)
                 );
@@ -728,14 +750,14 @@
                     attendanceList.appendChild(item);
                 });
             } else {
-                attendanceList.innerHTML = '<div class="status info">暂无考勤记录</div>';
+                attendanceList.innerHTML = '<div class="status info">暫無考勤記錄</div>';
             }
         }
         
-        // 更新活动选择下拉框
+        // 更新活動選擇下拉框
         function updateSessionSelect() {
             const sessionSelect = document.getElementById('session-select');
-            sessionSelect.innerHTML = '<option value="">-- 选择活动 --</option>';
+            sessionSelect.innerHTML = '<option value="">-- 選擇活動 --</option>';
             
             Object.keys(attendanceData).forEach(sessionId => {
                 const option = document.createElement('option');
@@ -745,14 +767,14 @@
             });
         }
         
-        // 显示活动记录
+        // 顯示活動記錄
         function showSessionRecords() {
             const sessionId = document.getElementById('session-select').value;
             const recordsList = document.getElementById('records-list');
             recordsList.innerHTML = '';
             
             if (sessionId && attendanceData[sessionId]) {
-                // 按时间排序
+                // 按時間排序
                 const sortedRecords = [...attendanceData[sessionId]].sort((a, b) => 
                     new Date(a.timestamp) - new Date(b.timestamp)
                 );
@@ -767,33 +789,33 @@
                     recordsList.appendChild(item);
                 });
                 
-                // 显示统计信息
+                // 顯示統計信息
                 const count = document.createElement('div');
                 count.className = 'status info';
-                count.textContent = `共 ${sortedRecords.length} 条记录`;
+                count.textContent = `共 ${sortedRecords.length} 條記錄`;
                 recordsList.appendChild(count);
             } else {
-                recordsList.innerHTML = '<div class="status info">请选择活动或该活动暂无记录</div>';
+                recordsList.innerHTML = '<div class="status info">請選擇活動或該活動暫無記錄</div>';
             }
         }
         
-        // 导出为Excel
+        // 匯出為Excel
         function exportToExcel() {
             if (Object.keys(attendanceData).length === 0) {
-                showStatus('暂无考勤记录可导出', 'error');
+                showStatus('暫無考勤記錄可匯出', 'error');
                 return;
             }
             
             const wb = XLSX.utils.book_new();
             
-            // 为每个活动创建一个工作表
+            // 為每個活動創建一個工作表
             Object.keys(attendanceData).forEach(sessionId => {
                 const records = attendanceData[sessionId];
                 const wsData = [
-                    ['学号', '时间']  // 表头
+                    ['學號', '時間']  // 表頭
                 ];
                 
-                // 按时间排序
+                // 按時間排序
                 const sortedRecords = [...records].sort((a, b) => 
                     new Date(a.timestamp) - new Date(b.timestamp)
                 );
@@ -806,39 +828,39 @@
                 XLSX.utils.book_append_sheet(wb, ws, sessionId.substring(0, 31)); // Excel工作表名最多31字符
             });
             
-            // 生成并下载Excel文件
-            XLSX.writeFile(wb, '考勤记录.xlsx');
-            showStatus('Excel文件已生成并开始下载', 'success');
+            // 生成並下載Excel文件
+            XLSX.writeFile(wb, '考勤記錄.xlsx');
+            showStatus('Excel文件已生成並開始下載', 'success');
         }
         
-        // 清除所有数据
+        // 清除所有數據
         function clearAllData() {
-            if (confirm('确定要清除所有考勤数据吗？此操作不可恢复！')) {
+            if (confirm('確定要清除所有考勤數據嗎？此操作不可恢復！')) {
                 attendanceData = {};
                 localStorage.removeItem('attendanceData');
                 updateSessionSelect();
-                document.getElementById('records-list').innerHTML = '<div class="status info">数据已清除</div>';
-                showStatus('所有数据已清除', 'success');
+                document.getElementById('records-list').innerHTML = '<div class="status info">數據已清除</div>';
+                showStatus('所有數據已清除', 'success');
             }
         }
         
-        // 显示状态信息
+        // 顯示狀態信息
         function showStatus(message, type) {
-            // 移除现有的状态信息
+            // 移除現有的狀態信息
             const existingStatus = document.querySelector('.status');
             if (existingStatus && existingStatus.parentNode === document.body) {
                 existingStatus.remove();
             }
             
-            // 创建新的状态信息
+            // 創建新的狀態信息
             const status = document.createElement('div');
             status.className = `status ${type}`;
             status.textContent = message;
             
-            // 插入到页面顶部
+            // 插入到頁面頂部
             document.body.insertBefore(status, document.querySelector('header'));
             
-            // 5秒后自动移除
+            // 5秒後自動移除
             setTimeout(() => {
                 if (status.parentNode) {
                     status.remove();
